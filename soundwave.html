@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Analysis App</title>
+    <style>
+        canvas {
+            display: inline-block;
+            margin: 20px 10px 0 0;
+            height: 200px;
+            width: 700px;
+            border-left: 1px solid black;
+            border-bottom: 1px solid black;
+        }
+        #xAxis {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-left: 70px;
+            width: 700px;
+            height: 50px;
+        }
+
+        #xAxis > div {
+            display: inline-block;
+            text-align: center;
+            width: auto;
+        }
+
+        #xAxis > div:first-child {
+            margin-left: 0;
+        }
+
+        #xAxis > div:last-child {
+            margin-right: 0;
+        }
+        #yAxis {
+            display: inline-block;
+            width: 70px;
+        }
+        #yAxis > div {
+            display: block;
+            margin-top: 26px;
+            text-align: right;
+            height: auto;
+        }
+        #yAxis > div :first-child {
+            margin-top: 0; 
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="audioInput" accept=".wav" onchange="handleFileUpload()">
+    <div>
+        <div id="yAxis"></div>
+        <canvas id="audioWaveCanvasElement"></canvas>
+    </div>
+    <div id="xAxis"></div>
+    <div id="audioSummaryElement"></div>
+
+    <script>
+        function handleFileUpload() {
+            const fileInputElement = document.getElementById('audioInput');
+            const audioWaveCanvasElement = document.getElementById('audioWaveCanvasElement');
+            const audioSummaryElement = document.getElementById('audioSummaryElement');
+
+            const file = fileInputElement.files[0];
+            if (!file) return;
+
+            if (file.type !== 'audio/wav') {
+                alert('Please select a .wav audio file.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const arrayBuffer = event.target.result;
+
+                const audioContextObj = new window.AudioContext();
+
+                audioContextObj.decodeAudioData(arrayBuffer)
+                    .then(function(audioBuffer) {
+                        audioSummaryElement.innerHTML = `
+                            <p>Length: ${audioBuffer.duration.toFixed(2)} seconds</p>
+                            <p>Sampling Frequency: ${Math.ceil(audioBuffer.sampleRate / 1000)} KHz</p>
+                        `;
+                        console.log(audioBuffer);
+                        drawAudioWaveForm(audioBuffer, audioWaveCanvasElement.getContext('2d'));
+
+                        const audioElement = new Audio();
+                        audioElement.src = URL.createObjectURL(file);
+
+                        audioElement.play();
+                    })
+                    .catch(function(error) {
+                        console.error('Error decoding audio data:', error);
+                    });
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function drawAudioWaveForm(audioBuffer, canvasContext) {
+            const width = canvasContext.canvas.width;
+            const height = canvasContext.canvas.height;
+            const data = audioBuffer.getChannelData(0);
+
+            canvasContext.clearRect(0, 0, width, height);
+            canvasContext.strokeStyle = 'black';
+            canvasContext.lineWidth = 2;
+
+            let graphXmin = 0;
+            let graphXMax = audioBuffer.duration.toFixed(2);
+            let graphYmin;
+            let graphYmax = 0;
+
+            canvasContext.beginPath();
+            const step = Math.ceil(data.length/ width);
+            for (let i = 0; i < step && (i + 2) * step < data.length; i+=5) {
+                const min = 1 + data.subarray(i * step, (i + 2) * step).reduce((a, b) => Math.min(a, b));
+                graphYmin = graphYmin ? Math.min(graphYmin, min - 1) : min - 1;
+                const max = -1 + data.subarray(i * step, (i + 2) * step).reduce((a, b) => Math.max(a, b));
+                graphYmax = Math.max(graphYmax, max + 1);
+                const x = i;
+                const yMin = (min + 1) * height / 2;
+                const yMax = (max + 1) * height / 2;
+
+                canvasContext.moveTo(x, yMin);
+                canvasContext.lineTo(x, yMax);
+            }
+            canvasContext.stroke();
+            const xAxisElement = document.getElementById("xAxis");
+            const yAxisElement = document.getElementById("yAxis");
+            let xAxes = `<div>0</div>`;
+            for(let i = 1; i < 4; i++){
+                xAxes += `\n<div>${(graphXmin + (i * (graphXMax - graphXmin)/4)).toFixed(2)}</div>`
+            }
+            xAxes += `\n<div>${graphXMax}</div>`;
+            graphYmax = Math.max(Math.abs(Number(graphYmax.toFixed(1)) + 0.1), Math.abs(graphYmin.toFixed(1) - 0.1));
+            let yRanges = [graphYmax, graphYmax/ 2, 0, -graphYmax / 2, -graphYmax];
+            let yAxes = `<div>${yRanges[0]}</div>`;
+            for(let i = 1; i < 5; i++){
+                yAxes += `\n<div>${yRanges[i]}</div>`
+            }
+            xAxisElement.innerHTML = xAxes;
+            yAxisElement.innerHTML = yAxes;
+        }
+
+    </script>
+</body>
+</html>
